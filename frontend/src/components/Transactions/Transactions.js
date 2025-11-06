@@ -12,10 +12,19 @@ function Transactions() {
   const [importResult, setImportResult] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [dragActive, setDragActive] = useState(false);
+  const [showUploadedFiles, setShowUploadedFiles] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
 
   useEffect(() => {
     fetchCompanies();
   }, []);
+
+  useEffect(() => {
+    if (showUploadedFiles) {
+      fetchUploadedFiles();
+    }
+  }, [showUploadedFiles]);
 
   useEffect(() => {
     if (selectedCompany) {
@@ -41,6 +50,20 @@ function Transactions() {
       setTransactions(response.data);
     } catch (error) {
       console.error('Failed to load transactions');
+    }
+  };
+
+  const fetchUploadedFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      const params = selectedCompany ? `?company_id=${selectedCompany}` : '';
+      const response = await axios.get(`/api/v1/transactions/uploads${params}`);
+      setUploadedFiles(response.data);
+    } catch (error) {
+      console.error('Failed to load uploaded files:', error);
+      setError('Failed to load uploaded files');
+    } finally {
+      setLoadingFiles(false);
     }
   };
 
@@ -110,6 +133,10 @@ function Transactions() {
         setSuccess(`✅ Successfully imported ${response.data.success_count} transactions!`);
         setSelectedFile(null);
         fetchTransactions(selectedCompany);
+        // Refresh uploaded files list if modal is open
+        if (showUploadedFiles) {
+          fetchUploadedFiles();
+        }
       } else {
         setError(`⚠️ Import completed with ${response.data.error_count} errors. ${response.data.success_count} transactions imported.`);
       }
@@ -143,8 +170,18 @@ function Transactions() {
 
   return (
     <div>
-      <h1 style={{fontSize: '32px', fontWeight: '600', marginBottom: '20px'}}>💸 Transactions</h1>
-      <p style={{color: '#666', marginBottom: '30px'}}>Import and manage financial transactions</p>
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px'}}>
+        <div>
+          <h1 style={{fontSize: '32px', fontWeight: '600', margin: 0, marginBottom: '8px'}}>💸 Transactions</h1>
+          <p style={{color: '#666', margin: 0}}>Import and manage financial transactions</p>
+        </div>
+        <button
+          onClick={() => setShowUploadedFiles(true)}
+          style={{padding: '12px 24px', backgroundColor: '#059669', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer'}}
+        >
+          📁 View Uploaded Files
+        </button>
+      </div>
 
       {error && <div style={{padding: '12px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '6px', marginBottom: '20px', border: '1px solid #fecaca'}}>{error}</div>}
       {success && <div style={{padding: '12px', backgroundColor: '#d1fae5', color: '#065f46', borderRadius: '6px', marginBottom: '20px', border: '1px solid #6ee7b7'}}>{success}</div>}
@@ -348,6 +385,95 @@ function Transactions() {
           <div style={{fontSize: '64px', marginBottom: '20px'}}>📊</div>
           <h3 style={{fontSize: '20px', fontWeight: '600', marginBottom: '15px'}}>Transaction Management</h3>
           <p style={{fontSize: '15px', color: '#6b7280'}}>Select a company above to import and view transactions</p>
+        </div>
+      )}
+
+      {/* Uploaded Files Modal */}
+      {showUploadedFiles && (
+        <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000}}>
+          <div style={{backgroundColor: 'white', padding: '30px', borderRadius: '12px', maxWidth: '900px', width: '90%', maxHeight: '90vh', overflowY: 'auto'}}>
+            <h3 style={{fontSize: '20px', fontWeight: '600', marginBottom: '20px'}}>📁 Uploaded Files</h3>
+
+            <div style={{marginBottom: '20px'}}>
+              <p style={{fontSize: '14px', color: '#6b7280', marginBottom: '15px'}}>
+                {selectedCompany ? 'Files uploaded for this company' : 'All uploaded files across your organization'}
+              </p>
+
+              {loadingFiles ? (
+                <div style={{padding: '40px', textAlign: 'center'}}>
+                  <div className="spinner" style={{margin: '0 auto'}}></div>
+                  <p style={{color: '#6b7280', marginTop: '15px'}}>Loading files...</p>
+                </div>
+              ) : uploadedFiles.length === 0 ? (
+                <div style={{backgroundColor: '#f9fafb', padding: '30px', borderRadius: '8px', textAlign: 'center'}}>
+                  <div style={{fontSize: '48px', marginBottom: '15px'}}>📂</div>
+                  <p style={{fontSize: '15px', color: '#6b7280'}}>No files uploaded yet</p>
+                </div>
+              ) : (
+                <div style={{overflowX: 'auto'}}>
+                  <table style={{width: '100%', fontSize: '14px', borderCollapse: 'collapse'}}>
+                    <thead>
+                      <tr style={{backgroundColor: '#f9fafb', borderBottom: '2px solid #e5e7eb'}}>
+                        <th style={{padding: '12px', textAlign: 'left', fontWeight: '600'}}>File</th>
+                        <th style={{padding: '12px', textAlign: 'left', fontWeight: '600'}}>Company</th>
+                        <th style={{padding: '12px', textAlign: 'center', fontWeight: '600'}}>Status</th>
+                        <th style={{padding: '12px', textAlign: 'right', fontWeight: '600'}}>Rows</th>
+                        <th style={{padding: '12px', textAlign: 'left', fontWeight: '600'}}>Date</th>
+                        <th style={{padding: '12px', textAlign: 'left', fontWeight: '600'}}>Uploaded By</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {uploadedFiles.map((file) => (
+                        <tr key={file.id} style={{borderBottom: '1px solid #e5e7eb'}}>
+                          <td style={{padding: '12px'}}>
+                            <div style={{fontWeight: '500'}}>{file.filename}</div>
+                            <div style={{fontSize: '12px', color: '#9ca3af'}}>
+                              {file.file_size ? `${(file.file_size / 1024).toFixed(1)} KB` : 'N/A'}
+                            </div>
+                          </td>
+                          <td style={{padding: '12px', color: '#6b7280'}}>{file.company_name || 'N/A'}</td>
+                          <td style={{padding: '12px', textAlign: 'center'}}>
+                            <span style={{
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              backgroundColor: file.status === 'completed' ? '#d1fae5' : (file.status === 'failed' ? '#fee2e2' : '#fef3c7'),
+                              color: file.status === 'completed' ? '#065f46' : (file.status === 'failed' ? '#991b1b' : '#92400e')
+                            }}>
+                              {file.status === 'completed' ? '✓' : (file.status === 'failed' ? '✗' : '⚠')} {file.status}
+                            </span>
+                          </td>
+                          <td style={{padding: '12px', textAlign: 'right'}}>
+                            <div style={{color: '#059669', fontWeight: '500'}}>{file.rows_successful || 0} ✓</div>
+                            {file.rows_failed > 0 && (
+                              <div style={{color: '#dc2626', fontSize: '12px'}}>{file.rows_failed} ✗</div>
+                            )}
+                          </td>
+                          <td style={{padding: '12px', fontSize: '13px', color: '#6b7280'}}>
+                            {new Date(file.created_at).toLocaleDateString()} {new Date(file.created_at).toLocaleTimeString()}
+                          </td>
+                          <td style={{padding: '12px', fontSize: '13px', color: '#6b7280'}}>{file.uploaded_by_name || 'Unknown'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div style={{display: 'flex', gap: '10px', justifyContent: 'space-between', alignItems: 'center'}}>
+              <div style={{fontSize: '13px', color: '#6b7280'}}>
+                {uploadedFiles.length > 0 && `Showing ${uploadedFiles.length} file${uploadedFiles.length !== 1 ? 's' : ''}`}
+              </div>
+              <button
+                onClick={() => setShowUploadedFiles(false)}
+                style={{padding: '12px 24px', backgroundColor: '#e5e7eb', color: '#374151', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: '600', cursor: 'pointer'}}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

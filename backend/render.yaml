@@ -1,0 +1,26 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: consolidator-db
+    env: docker
+    plan: free
+    ipAllowList: []
+
+  # FastAPI Backend
+  - type: web
+    name: constellation-backend
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: consolidator-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      - key: CORS_ORIGINS
+        value: "https://your-frontend-url.vercel.app"

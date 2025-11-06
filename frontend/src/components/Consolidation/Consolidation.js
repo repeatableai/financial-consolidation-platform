@@ -223,7 +223,7 @@ function Consolidation() {
 
                 {expandedRuns[run.id] && runDetails[run.id] && (
                   <div style={{padding: '25px', backgroundColor: 'white', borderTop: '2px solid #e5e7eb'}}>
-                    <h4 style={{fontSize: '16px', fontWeight: '600', marginBottom: '18px', color: '#1f2937'}}>📊 Company-by-Company Breakdown</h4>
+                    <h4 style={{fontSize: '16px', fontWeight: '600', marginBottom: '18px', color: '#1f2937'}}>📊 Member Company Breakdown</h4>
                     <div style={{display: 'grid', gap: '12px'}}>
                       {runDetails[run.id].company_breakdowns.map((comp) => (
                         <div key={comp.company_id} style={{border: '1px solid #e5e7eb', borderRadius: '8px', padding: '18px', backgroundColor: '#f9fafb'}}>

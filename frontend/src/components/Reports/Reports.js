@@ -64,14 +64,85 @@ function Reports() {
   const liabToAssets = safeDivide(selectedRun.total_liabilities, selectedRun.total_assets, 0);
   const expToRevenue = safeDivide(selectedRun.total_expenses, selectedRun.total_revenue, 0);
 
+  const handleExcelExport = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`/api/v1/reports/${selectedRun.id}/export/excel`, {
+        responseType: 'blob',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Report_${selectedRun.run_name.replace(/ /g, '_')}_${selectedRun.fiscal_year}_${String(selectedRun.fiscal_period).padStart(2, '0')}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleBoardPackageExport = async () => {
+    try {
+      console.log('Downloading Board Package...');
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`/api/v1/reports/${selectedRun.id}/export/board-package`, {
+        responseType: 'blob',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `TechCorp_Holdings_Board_Package_${selectedRun.fiscal_year}_Q${Math.ceil(selectedRun.fiscal_period/3)}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      console.log('✓ Board Package downloaded');
+    } catch (error) {
+      console.error('Board Package export error:', error);
+      alert('Failed to export Board Package: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
   return (
     <div>
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
         <h1 style={{fontSize: '32px', fontWeight: '600'}}>📊 Financial Reports</h1>
         {selectedRun && (
-          <button
-            onClick={() => window.open(`/api/v1/reports/${selectedRun.id}/export/excel`, '_blank')}
-            style={{
+          <div style={{display: 'flex', gap: '12px'}}>
+            <button
+              onClick={handleBoardPackageExport}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: '#4f46e5',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '15px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 4px rgba(79, 70, 229, 0.3)'
+              }}
+            >
+              <span>📊</span>
+              <span>Export Board Package (12 Sheets)</span>
+            </button>
+            <button
+              onClick={handleExcelExport}
+              style={{
               padding: '12px 24px',
               backgroundColor: '#059669',
               color: 'white',
@@ -87,8 +158,9 @@ function Reports() {
             }}
           >
             <span>📥</span>
-            <span>Export to Excel</span>
+            <span>Export to Excel (Simple)</span>
           </button>
+          </div>
         )}
       </div>
 

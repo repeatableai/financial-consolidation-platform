@@ -21,7 +21,11 @@ class Settings(BaseSettings):
     OPENAI_TEMPERATURE: float = 0.3
     OPENAI_MAX_TOKENS: int = 2000
 
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000"
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
 
     AI_MAPPING_CONFIDENCE_THRESHOLD: float = 0.85
     DEFAULT_CURRENCY: str = "USD"

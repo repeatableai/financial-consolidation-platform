@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import ParentSelector from './ParentSelector';
 
 function Layout() {
   const { user, logout } = useAuth();
@@ -18,16 +19,18 @@ function Layout() {
 
         <div style={{flex: 1}}>
           <NavLink to="/">Dashboard</NavLink>
-          <NavLink to="/companies">Companies</NavLink>
-          <NavLink to="/master-accounts">Master Accounts</NavLink>
-          <NavLink to="/transactions">Transactions</NavLink>
+          <NavLink to="/companies">Member Companies</NavLink>
+          <NavLink to="/company-financials">Company Financials</NavLink>          <NavLink to="/master-accounts">Master Accounts</NavLink>
+          <NavLink to="/company-comparison">Company Comparison</NavLink>          <NavLink to="/transactions">Transactions</NavLink>
           <NavLink to="/mappings">Account Mappings</NavLink>
           <NavLink to="/consolidation">Consolidation</NavLink>
           <NavLink to="/reports">Reports</NavLink>
+          <NavLink to="/parent-settings">Parent Settings</NavLink>
         </div>
 
         <div style={{borderTop: '1px solid #334155', paddingTop: '20px'}}>
-          <div style={{marginBottom: '10px', fontSize: '14px', color: '#94a3b8'}}>{user?.full_name}</div>
+          <ParentSelector />
+          <div style={{marginTop: '15px', marginBottom: '10px', fontSize: '14px', color: '#94a3b8'}}>{user?.full_name}</div>
           <button onClick={handleLogout} style={{width: '100%', padding: '8px', backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'}}>
             Logout
           </button>

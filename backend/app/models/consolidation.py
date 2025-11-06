@@ -24,6 +24,22 @@ class ConsolidationStatus(enum.Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+class CompanyType(enum.Enum):
+    PARENT = "parent"
+    SUBSIDIARY = "subsidiary"
+    MEMBER = "member"
+
+class ConsolidationMethod(enum.Enum):
+    FULL = "full"
+    EQUITY = "equity"
+    COST = "cost"
+
+class EliminationStatus(enum.Enum):
+    DETECTED = "detected"
+    MATCHED = "matched"
+    ELIMINATED = "eliminated"
+    REJECTED = "rejected"
+
 class Organization(Base):
     __tablename__ = "organizations"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -36,6 +52,21 @@ class Organization(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     companies = relationship("Company", back_populates="organization", cascade="all, delete-orphan")
     master_accounts = relationship("MasterAccount", back_populates="organization", cascade="all, delete-orphan")
+
+class ParentCompany(Base):
+    __tablename__ = "parent_companies"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
+    name = Column(String, nullable=False)
+    legal_name = Column(String, nullable=True)
+    tax_id = Column(String, nullable=True)
+    incorporation_country = Column(String, nullable=True)
+    fiscal_year_end_month = Column(Integer, default=12)
+    reporting_currency = Column(String, default="USD")
+    accounting_standard = Column(String, default="GAAP")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    member_companies = relationship("Company", back_populates="parent_company", foreign_keys="[Company.parent_company_id]")
 
 class Company(Base):
     __tablename__ = "companies"
@@ -50,9 +81,17 @@ class Company(Base):
     currency = Column(String, default="USD")
     fiscal_year_end_month = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
+    # Parent-subsidiary fields
+    parent_company_id = Column(String, ForeignKey("parent_companies.id"), nullable=True)
+    ownership_percentage = Column(Float, default=100.0)
+    company_type = Column(SQLEnum(CompanyType), default=CompanyType.MEMBER)
+    consolidation_method = Column(SQLEnum(ConsolidationMethod), default=ConsolidationMethod.FULL)
+    acquisition_date = Column(DateTime, nullable=True)
+    goodwill_amount = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     organization = relationship("Organization", back_populates="companies")
+    parent_company = relationship("ParentCompany", back_populates="member_companies", foreign_keys=[parent_company_id])
     accounts = relationship("CompanyAccount", back_populates="company", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="company", cascade="all, delete-orphan", foreign_keys="[Transaction.company_id]")
 
@@ -148,11 +187,45 @@ class IntercompanyElimination(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     consolidation_run_id = Column(String, ForeignKey("consolidation_runs.id"), nullable=False)
     description = Column(Text, nullable=False)
+    from_company_id = Column(String, ForeignKey("companies.id"), nullable=False)
+    to_company_id = Column(String, ForeignKey("companies.id"), nullable=True)
     transaction_1_id = Column(String, ForeignKey("transactions.id"), nullable=False)
     transaction_2_id = Column(String, ForeignKey("transactions.id"), nullable=True)
     elimination_amount = Column(Float, nullable=False)
     currency = Column(String, default="USD")
+    elimination_type = Column(String, nullable=True)
     detection_confidence = Column(Float, nullable=True)
+    elimination_status = Column(SQLEnum(EliminationStatus), default=EliminationStatus.DETECTED)
     ai_reasoning = Column(Text, nullable=True)
     is_verified = Column(Boolean, default=False)
+    verified_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class ConsolidationAdjustment(Base):
+    __tablename__ = "consolidation_adjustments"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    consolidation_run_id = Column(String, ForeignKey("consolidation_runs.id"), nullable=False)
+    adjustment_type = Column(String, nullable=False)
+    description = Column(Text, nullable=False)
+    amount = Column(Float, nullable=False)
+    related_company_id = Column(String, ForeignKey("companies.id"), nullable=True)
+    account_impact = Column(JSON, nullable=True)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class FileUpload(Base):
+    __tablename__ = "file_uploads"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
+    company_id = Column(String, ForeignKey("companies.id"), nullable=True)
+    filename = Column(String, nullable=False)
+    file_type = Column(String, nullable=False)  # 'transactions', 'accounts', 'balances', etc.
+    file_size = Column(Integer, nullable=True)  # in bytes
+    mime_type = Column(String, nullable=True)
+    rows_processed = Column(Integer, nullable=True)
+    rows_successful = Column(Integer, nullable=True)
+    rows_failed = Column(Integer, nullable=True)
+    status = Column(String, default="completed")  # 'completed', 'failed', 'partial'
+    error_summary = Column(Text, nullable=True)
+    uploaded_by = Column(String, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

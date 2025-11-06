@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useParent } from '../../context/ParentContext';
 
 function Companies() {
+  const { selectedParent } = useParent();
   const [companies, setCompanies] = useState([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState(null);
   const [companyDetails, setCompanyDetails] = useState(null);
@@ -18,47 +20,27 @@ function Companies() {
   });
 
   useEffect(() => {
-    fetchOrganization();
-  }, []);
-
-  const fetchOrganization = async () => {
-    try {
-      const response = await axios.get('/api/v1/organizations/current');
-      setOrganizationId(response.data.id);
-      fetchCompanies(response.data.id);
-    } catch (error) {
-      if (error.response?.status === 404) {
-        createOrganization();
-      } else {
-        setError('Failed to load organization');
-        setLoading(false);
-      }
+    if (selectedParent) {
+      fetchParentMembers();
     }
-  };
+  }, [selectedParent]);
 
-  const createOrganization = async () => {
-    try {
-      const response = await axios.post('/api/v1/organizations/', {
-        name: 'My Organization',
-        description: 'Default organization',
-        fiscal_year_end_month: 12,
-        default_currency: 'USD'
-      });
-      setOrganizationId(response.data.id);
-      fetchCompanies(response.data.id);
-    } catch (error) {
-      setError('Failed to create organization');
+  const fetchParentMembers = async () => {
+    if (!selectedParent) {
       setLoading(false);
+      return;
     }
-  };
 
-  const fetchCompanies = async (orgId) => {
     try {
-      const response = await axios.get(`/api/v1/companies/?organization_id=${orgId}`);
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`/api/v1/parent-companies/${selectedParent.id}/members`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setCompanies(response.data);
       setLoading(false);
     } catch (error) {
-      setError('Failed to load companies');
+      console.error('Failed to load member companies:', error);
+      setError('Failed to load member companies');
       setLoading(false);
     }
   };
@@ -78,10 +60,14 @@ function Companies() {
     setError('');
 
     try {
-      await axios.post(`/api/v1/companies/?organization_id=${organizationId}`, formData);
+      const orgResponse = await axios.get('/api/v1/organizations/current');
+      await axios.post(`/api/v1/companies/?organization_id=${orgResponse.data.id}`, {
+        ...formData,
+        parent_company_id: selectedParent?.id
+      });
       setShowAddForm(false);
       setFormData({ name: '', legal_name: '', entity_type: '', industry: '', currency: 'USD' });
-      fetchCompanies(organizationId);
+      fetchParentMembers();
     } catch (error) {
       setError(error.response?.data?.detail || 'Failed to create company');
     }
@@ -98,9 +84,20 @@ function Companies() {
   if (loading) {
     return (
       <div>
-        <h1 style={{marginBottom: '20px', fontSize: '32px', fontWeight: '600'}}>Companies</h1>
+        <h1 style={{marginBottom: '20px', fontSize: '32px', fontWeight: '600'}}>Member Companies</h1>
         <div style={{display: 'flex', justifyContent: 'center', padding: '50px'}}>
           <div className="spinner"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!selectedParent) {
+    return (
+      <div>
+        <h1 style={{marginBottom: '20px', fontSize: '32px', fontWeight: '600'}}>Member Companies</h1>
+        <div style={{padding: '40px', backgroundColor: 'white', borderRadius: '8px', textAlign: 'center'}}>
+          <p style={{color: '#6b7280', marginBottom: '20px'}}>No parent company selected. Please select a parent company from the sidebar.</p>
         </div>
       </div>
     );
@@ -109,7 +106,10 @@ function Companies() {
   return (
     <div>
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
-        <h1 style={{fontSize: '32px', fontWeight: '600'}}>Companies</h1>
+        <div>
+          <h1 style={{fontSize: '32px', fontWeight: '600', marginBottom: '4px'}}>Member Companies</h1>
+          <p style={{fontSize: '14px', color: '#6b7280'}}>Companies under {selectedParent.name}</p>
+        </div>
         <button
           onClick={() => { setShowAddForm(!showAddForm); setSelectedCompanyId(null); }}
           style={{padding: '10px 20px', backgroundColor: '#4f46e5', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '500', cursor: 'pointer'}}

@@ -19,7 +19,7 @@ function Login() {
     setLoading(false);
 
     if (result.success) {
-      navigate('/');
+      navigate('/select-company');
     } else {
       setError(result.error);
     }
