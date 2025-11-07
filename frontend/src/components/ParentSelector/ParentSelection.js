@@ -20,6 +20,13 @@ function ParentSelection() {
       const response = await axios.get('/api/v1/parent-companies/', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      
+      // If no parent companies exist, redirect to setup wizard
+      if (response.data.length === 0) {
+        navigate('/setup');
+        return;
+      }
+      
       setParentCompanies(response.data);
       setLoading(false);
     } catch (error) {

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import './App.css';
 import Login from './components/Auth/Login';
 import Register from './components/Auth/Register';
+import SetupWizard from './components/Setup/SetupWizard';
 import ParentSelection from './components/ParentSelector/ParentSelection';
 import Dashboard from './components/ParentDashboard/ParentDashboard';
 import Companies from './components/Companies/Companies';
@@ -33,6 +34,7 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/setup" element={<ProtectedRoute><SetupWizard /></ProtectedRoute>} />
             <Route path="/select-company" element={<ProtectedRoute><ParentSelection /></ProtectedRoute>} />
             <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />

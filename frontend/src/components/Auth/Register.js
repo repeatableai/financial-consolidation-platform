@@ -20,7 +20,8 @@ function Register() {
     setLoading(false);
 
     if (result.success) {
-      navigate('/');
+      // Redirect new users to setup wizard
+      navigate('/setup');
     } else {
       setError(result.error);
     }
