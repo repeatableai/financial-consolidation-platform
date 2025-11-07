@@ -1,37 +1,31 @@
 services:
+  # Backend API
   - type: web
     name: constellation-backend
-    runtime: python
-    region: oregon
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     plan: free
-    branch: main
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /health
+    region: oregon
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: constellation-db
-          property: connectionString
+        value: postgresql://postgres:postgres@postgres:5432/consolidator
       - key: SECRET_KEY
         generateValue: true
-      - key: ENVIRONMENT
-        value: production
-      - key: DEBUG
-        value: False
-      - key: DATABASE_ECHO
-        value: False
-      - key: CORS_ORIGINS
-        value: https://frontend-ha1el97iz-kevin-4013s-projects.vercel.app,http://localhost:3000
       - key: ALGORITHM
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: 30
-
-databases:
-  - name: constellation-db
-    databaseName: consolidator
-    user: consolidator
-    region: oregon
-    plan: free
+      - key: OPENAI_API_KEY
+        sync: false  # Set this manually in Render.com dashboard
+      - key: OPENAI_MODEL
+        value: gpt-4
+      - key: OPENAI_TEMPERATURE
+        value: 0.3
+      - key: OPENAI_MAX_TOKENS
+        value: 2000
+      - key: CORS_ORIGINS
+        value: https://frontend-three-ivory-45.vercel.app,https://frontend-ijhqx5jjc-kevin-4013s-projects.vercel.app,http://localhost:3000
+      - key: PORT
+        value: 8000
+    healthCheckPath: /
