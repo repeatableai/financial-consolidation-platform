@@ -9,8 +9,9 @@ import uuid
 from ..core.database import get_db
 from ..core.security import get_current_user
 from ..models.user import User
-from ..models.consolidation import Transaction, Company, CompanyAccount, Organization, TransactionType, FileUpload
+from ..models.consolidation import Transaction, Company, CompanyAccount, Organization, TransactionType, FileUpload, AccountType, AccountMapping
 from ..services.import_service import import_service
+from ..services.mapping_service import mapping_service
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ async def create_transaction(txn_data: TransactionCreate, db: Session = Depends(
 
 @router.get("/company/{company_id}", response_model=List[TransactionResponse])
 async def list_transactions(company_id: str, limit: int = 100, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    transactions = db.query(Transaction).filter(Transaction.company_id == company_id).limit(limit).all()
+    transactions = db.query(Transaction).filter(Transaction.company_id == company_id).order_by(Transaction.transaction_date.desc()).limit(limit).all()
     return [TransactionResponse.from_orm(t) for t in transactions]
 
 class ImportResult(BaseModel):
@@ -52,6 +53,8 @@ class ImportResult(BaseModel):
     total_rows: int
     errors: List[Dict]
     preview: List[Dict]
+    pending_mappings: List[Dict] = []
+    auto_mapped_count: int = 0
 
 @router.post("/import", response_model=ImportResult)
 async def import_transactions(
@@ -92,14 +95,108 @@ async def import_transactions(
             preview=[]
         )
 
-    # Build account lookup
+    # Build account lookup from existing accounts
     company_accounts = db.query(CompanyAccount).filter(
         CompanyAccount.company_id == company_id
     ).all()
     account_lookup = {acc.account_number: acc.id for acc in company_accounts}
 
+    logger.info(f"Found {len(account_lookup)} existing accounts for company {company_id}")
+
+    # Track mapping results
+    pending_mappings = []
+    auto_mapped_count = 0
+
+    # Auto-create missing accounts from import file
+    if 'account_number' in df.columns:
+        unique_accounts = df['account_number'].dropna().unique()
+        logger.info(f"Import file contains {len(unique_accounts)} unique account numbers")
+
+        accounts_created = 0
+        for account_num in unique_accounts:
+            account_num_str = str(account_num).strip()
+
+            # Skip if account already exists
+            if account_num_str in account_lookup:
+                continue
+
+            # Infer account type from account number or name
+            account_type_str = import_service.infer_account_type_from_number(account_num_str)
+            account_type = AccountType[account_type_str.upper()]
+
+            # Get account name (for financial statements, the account_number IS the name)
+            account_name = import_service.get_account_name_from_df(df, account_num_str)
+
+            # Create new account
+            try:
+                new_account = CompanyAccount(
+                    id=str(uuid.uuid4()),
+                    company_id=company_id,
+                    account_number=account_num_str,
+                    account_name=account_name,
+                    account_type=account_type,
+                    is_active=True
+                )
+                db.add(new_account)
+                db.flush()  # Get the ID without committing yet
+
+                # Add to lookup
+                account_lookup[account_num_str] = new_account.id
+                accounts_created += 1
+
+                logger.info(f"Created account: {account_num_str} ({account_name}) - Type: {account_type_str}")
+
+                # Try to map to master account using AI
+                master_account_id, confidence = mapping_service.find_master_account_match(
+                    account_name=account_name,
+                    account_type=account_type,
+                    organization_id=str(company.organization_id),
+                    db=db
+                )
+
+                if master_account_id and confidence >= 0.8:
+                    # High confidence - auto-create mapping
+                    mapping = AccountMapping(
+                        id=str(uuid.uuid4()),
+                        company_account_id=new_account.id,
+                        master_account_id=master_account_id,
+                        confidence_score=confidence,
+                        mapping_source="ai_auto",
+                        is_active=True,
+                        is_verified=False,
+                        created_by=str(current_user.id)
+                    )
+                    db.add(mapping)
+                    auto_mapped_count += 1
+                    logger.info(f"Auto-mapped account '{account_name}' to master account {master_account_id} (confidence: {confidence})")
+                else:
+                    # Low/no confidence - require user approval
+                    suggested_master = mapping_service.get_suggested_master_account_details(master_account_id, db) if master_account_id else None
+                    pending_mappings.append({
+                        "child_account_id": new_account.id,
+                        "child_account_number": account_num_str,
+                        "child_account_name": account_name,
+                        "account_type": account_type_str,
+                        "suggested_master_account": suggested_master,
+                        "confidence": confidence
+                    })
+                    logger.info(f"Account '{account_name}' requires user approval (confidence: {confidence})")
+            except Exception as e:
+                logger.error(f"Error creating account {account_num_str}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to create account {account_num_str}: {str(e)}")
+
+        if accounts_created > 0:
+            db.commit()  # Commit all new accounts
+            logger.info(f"Successfully created {accounts_created} new accounts")
+        else:
+            logger.info("No new accounts needed - all accounts already exist")
+
     # Prepare transactions
     transactions_data, prep_errors = import_service.prepare_transactions(df, company_id, account_lookup)
+
+    logger.info(f"prepare_transactions returned: {len(transactions_data)} transactions, {len(prep_errors)} errors")
+    if prep_errors:
+        logger.error(f"First 10 prep errors: {prep_errors[:10]}")
 
     if prep_errors:
         return ImportResult(
@@ -113,6 +210,7 @@ async def import_transactions(
     # Insert transactions
     success_count = 0
     errors_list = []
+    logger.info(f"Starting to insert {len(transactions_data)} transactions...")
     for txn_data in transactions_data:
         try:
             transaction = Transaction(
@@ -127,6 +225,7 @@ async def import_transactions(
             errors_list.append({"error": str(e)})
 
     db.commit()
+    logger.info(f"Successfully inserted {success_count} transactions into database")
 
     # Save file upload record
     error_count = len(transactions_data) - success_count
@@ -157,7 +256,155 @@ async def import_transactions(
         error_count=error_count,
         total_rows=len(df),
         errors=errors_list[:10],  # Show first 10 errors
-        preview=transactions_data[:5]  # Show first 5
+        preview=transactions_data[:5],  # Show first 5
+        pending_mappings=pending_mappings,
+        auto_mapped_count=auto_mapped_count
+    )
+
+class MappingDecision(BaseModel):
+    child_account_id: str
+    action: str  # "accept", "create_new", "select_different"
+    master_account_id: str | None = None  # For "accept" or "select_different"
+    new_master_account: Dict | None = None  # For "create_new"
+
+class MappingApprovalRequest(BaseModel):
+    decisions: List[MappingDecision]
+
+class MappingApprovalResult(BaseModel):
+    mappings_created: int
+    master_accounts_created: int
+    errors: List[Dict] = []
+
+@router.post("/mappings/approve", response_model=MappingApprovalResult)
+async def approve_mappings(
+    approval_request: MappingApprovalRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Approve or reject pending account mappings.
+
+    Actions:
+    - "accept": Accept the suggested master account mapping
+    - "create_new": Create a new master account and map to it
+    - "select_different": Map to a different existing master account
+    """
+    from ..models.consolidation import MasterAccount
+
+    mappings_created = 0
+    master_accounts_created = 0
+    errors = []
+
+    for decision in approval_request.decisions:
+        try:
+            # Verify child account exists and belongs to user's organization
+            child_account = db.query(CompanyAccount).join(Company).join(Organization).filter(
+                CompanyAccount.id == decision.child_account_id,
+                Organization.owner_id == current_user.id
+            ).first()
+
+            if not child_account:
+                errors.append({
+                    "child_account_id": decision.child_account_id,
+                    "error": "Child account not found or not authorized"
+                })
+                continue
+
+            master_account_id = None
+
+            if decision.action == "accept" or decision.action == "select_different":
+                # Use provided master account ID
+                if not decision.master_account_id:
+                    errors.append({
+                        "child_account_id": decision.child_account_id,
+                        "error": f"master_account_id required for action '{decision.action}'"
+                    })
+                    continue
+
+                # Verify master account exists and belongs to same organization
+                master_account = db.query(MasterAccount).filter(
+                    MasterAccount.id == decision.master_account_id,
+                    MasterAccount.organization_id == child_account.company.organization_id
+                ).first()
+
+                if not master_account:
+                    errors.append({
+                        "child_account_id": decision.child_account_id,
+                        "error": "Master account not found or belongs to different organization"
+                    })
+                    continue
+
+                master_account_id = decision.master_account_id
+
+            elif decision.action == "create_new":
+                # Create new master account
+                if not decision.new_master_account:
+                    errors.append({
+                        "child_account_id": decision.child_account_id,
+                        "error": "new_master_account data required for action 'create_new'"
+                    })
+                    continue
+
+                try:
+                    new_master = MasterAccount(
+                        id=str(uuid.uuid4()),
+                        organization_id=str(child_account.company.organization_id),
+                        account_number=decision.new_master_account.get("account_number"),
+                        account_name=decision.new_master_account.get("account_name"),
+                        account_type=AccountType[decision.new_master_account.get("account_type").upper()],
+                        category=decision.new_master_account.get("category"),
+                        subcategory=decision.new_master_account.get("subcategory"),
+                        is_active=True
+                    )
+                    db.add(new_master)
+                    db.flush()  # Get the ID
+
+                    master_account_id = new_master.id
+                    master_accounts_created += 1
+                    logger.info(f"Created new master account: {new_master.account_name} ({new_master.account_number})")
+
+                except Exception as e:
+                    errors.append({
+                        "child_account_id": decision.child_account_id,
+                        "error": f"Failed to create master account: {str(e)}"
+                    })
+                    continue
+
+            else:
+                errors.append({
+                    "child_account_id": decision.child_account_id,
+                    "error": f"Invalid action: {decision.action}"
+                })
+                continue
+
+            # Create the mapping
+            mapping = AccountMapping(
+                id=str(uuid.uuid4()),
+                company_account_id=decision.child_account_id,
+                master_account_id=master_account_id,
+                mapping_source="user_manual",
+                is_active=True,
+                is_verified=True,  # User verified
+                created_by=str(current_user.id)
+            )
+            db.add(mapping)
+            mappings_created += 1
+            logger.info(f"Created mapping: child {decision.child_account_id} -> master {master_account_id}")
+
+        except Exception as e:
+            logger.error(f"Error processing mapping decision: {e}")
+            errors.append({
+                "child_account_id": decision.child_account_id,
+                "error": str(e)
+            })
+
+    # Commit all changes
+    db.commit()
+
+    return MappingApprovalResult(
+        mappings_created=mappings_created,
+        master_accounts_created=master_accounts_created,
+        errors=errors
     )
 
 @router.get("/template/csv")
