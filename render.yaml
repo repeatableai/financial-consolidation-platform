@@ -3,13 +3,14 @@ services:
   - type: web
     name: constellation-backend
     env: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerfilePath: ./Dockerfile
     plan: free
     region: oregon
     envVars:
       - key: DATABASE_URL
-        value: postgresql://postgres:postgres@postgres:5432/consolidator
+        fromDatabase:
+          name: constellation-db
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
@@ -29,3 +30,9 @@ services:
       - key: PORT
         value: 8000
     healthCheckPath: /
+
+databases:
+  - name: constellation-db
+    databaseName: consolidator
+    plan: free
+    region: oregon
