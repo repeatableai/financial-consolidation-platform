@@ -26,7 +26,7 @@ services:
       - key: OPENAI_MAX_TOKENS
         value: 2000
       - key: CORS_ORIGINS
-        value: https://frontend-three-ivory-45.vercel.app,https://frontend-ijhqx5jjc-kevin-4013s-projects.vercel.app,http://localhost:3000
+        value: https://frontend-three-ivory-45.vercel.app,https://frontend-ijhqx5jjc-kevin-4013s-projects.vercel.app,https://frontend-wui75glyh-kevin-4013s-projects.vercel.app,http://localhost:3000,https://constellation-backend-3blg.onrender.com
       - key: PORT
         value: 8000
     healthCheckPath: /

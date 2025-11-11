@@ -32,7 +32,7 @@ services:
       OPENAI_MODEL: gpt-4
       OPENAI_TEMPERATURE: 0.3
       OPENAI_MAX_TOKENS: 2000
-      CORS_ORIGINS: 'https://frontend-rezj08qe7-kevin-4013s-projects.vercel.app,https://frontend-three-ivory-45.vercel.app,https://pan-chef-virtually-traffic.trycloudflare.com,http://localhost:3000,http://localhost:8000'
+      CORS_ORIGINS: 'https://frontend-6bv39y9uh-kevin-4013s-projects.vercel.app,https://frontend-rezj08qe7-kevin-4013s-projects.vercel.app,https://frontend-three-ivory-45.vercel.app,https://searching-decrease-code-connections.trycloudflare.com,http://localhost:3000,http://localhost:8000'
     ports:
       - "8000:8000"
     volumes:
