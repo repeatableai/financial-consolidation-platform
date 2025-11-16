@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 class MappingService:
     def __init__(self):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        api_key = os.getenv("OPENAI_API_KEY")
+        self.client = OpenAI(api_key=api_key) if api_key else None
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.3"))
 
